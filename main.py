@@ -1,3 +1,4 @@
+```python
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import APIKeyHeader
 import time
@@ -8,13 +9,25 @@ from database import (
     get_connection,
     save_vehicle,
     validate_api_key,
-    increment_usage
+    increment_usage,
+    create_database
 )
 
 
 # Load environment variables
 load_dotenv()
 
+
+# -----------------------------
+# DATABASE INITIALIZATION
+# -----------------------------
+
+create_database()
+
+
+# -----------------------------
+# FASTAPI APP
+# -----------------------------
 
 app = FastAPI(
     title="Vehicle Data API",
@@ -454,6 +467,7 @@ def get_recalls(
     year: int,
     api_key=Depends(authenticate_and_limit)
 ):
+
     import requests
 
     url = "https://api.nhtsa.gov/recalls/recallsByVehicle"
@@ -497,11 +511,15 @@ def get_safety(
     year: int,
     api_key=Depends(authenticate_and_limit)
 ):
+
     import requests
 
     url = f"https://api.nhtsa.gov/SafetyRatings/modelyear/{year}/make/{make}/model/{model}"
 
-    response = requests.get(url, timeout=15)
+    response = requests.get(
+        url,
+        timeout=15
+    )
 
     if response.status_code != 200:
         raise HTTPException(
@@ -623,5 +641,4 @@ def get_usage(
         "api_key_name": api_key["name"],
         "requests_count": api_key["requests_count"]
     }
-    
 
