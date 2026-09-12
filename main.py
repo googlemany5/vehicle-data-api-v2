@@ -454,41 +454,35 @@ def get_recalls(
     year: int,
     api_key=Depends(authenticate_and_limit)
 ):
+    import requests
 
-    connection = get_connection()
+    url = "https://api.nhtsa.gov/recalls/recallsByVehicle"
 
-    rows = connection.execute(
-        """
-        SELECT
-            record_id,
-            campaign_number,
-            make,
-            model,
-            model_year,
-            manufacturer,
-            component,
-            potential_units_affected,
-            owner_notification_date,
-            defect_summary,
-            consequence_summary,
-            corrective_action
-        FROM recalls
-        WHERE LOWER(make) = LOWER(?)
-        AND LOWER(model) = LOWER(?)
-        AND model_year = ?
-        ORDER BY record_id DESC
-        """,
-        (make, model, year)
-    ).fetchall()
+    response = requests.get(
+        url,
+        params={
+            "make": make,
+            "model": model,
+            "modelYear": year
+        },
+        timeout=15
+    )
 
-    connection.close()
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail="NHTSA recall service is unavailable"
+        )
+
+    data = response.json()
+    recalls = data.get("results", [])
 
     return {
         "make": make,
         "model": model,
         "year": year,
-        "recall_count": len(rows),
-        "recalls": [dict(row) for row in rows]
+        "recall_count": len(recalls),
+        "recalls": recalls
     }
 
 
@@ -503,73 +497,26 @@ def get_safety(
     year: int,
     api_key=Depends(authenticate_and_limit)
 ):
+    import requests
 
-    connection = get_connection()
+    url = f"https://api.nhtsa.gov/SafetyRatings/modelyear/{year}/make/{make}/model/{model}"
 
-    columns = connection.execute(
-        "PRAGMA table_info(safety_ratings)"
-    ).fetchall()
+    response = requests.get(url, timeout=15)
 
-    column_names = [row["name"] for row in columns]
-
-    def find_column(names):
-
-        for name in names:
-            if name in column_names:
-                return name
-
-        return None
-
-    make_column = find_column([
-        "MAKE",
-        "Make",
-        "Vehicle Make"
-    ])
-
-    model_column = find_column([
-        "MODEL",
-        "Model",
-        "Vehicle Model"
-    ])
-
-    year_column = find_column([
-        "MODEL_YEAR",
-        "Model Year",
-        "ModelYear"
-    ])
-
-    if not make_column or not model_column or not year_column:
-
-        connection.close()
-
+    if response.status_code != 200:
         raise HTTPException(
-            status_code=500,
-            detail="Could not identify NHTSA vehicle columns"
+            status_code=502,
+            detail="NHTSA safety ratings service is unavailable"
         )
 
-    query = f"""
-        SELECT *
-        FROM safety_ratings
-        WHERE LOWER("{make_column}") = LOWER(?)
-        AND LOWER("{model_column}") = LOWER(?)
-        AND "{year_column}" = ?
-        LIMIT 1
-    """
+    data = response.json()
 
-    row = connection.execute(
-        query,
-        (make, model, year)
-    ).fetchone()
-
-    connection.close()
-
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Safety rating not found"
-        )
-
-    return dict(row)
+    return {
+        "make": make,
+        "model": model,
+        "year": year,
+        "results": data.get("Results", [])
+    }
 
 
 # -----------------------------
